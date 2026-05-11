@@ -1,4 +1,4 @@
-const API_KEY = process.env.OPENAI_API_KEY
+const API_KEY = process.env.OPENAI_API_KEY ?? process.env.MINIMAX_API_KEY
 const BASE_URL = 'https://api.openai.com/v1'
 
 export interface Message {
