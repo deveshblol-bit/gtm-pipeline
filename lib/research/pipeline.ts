@@ -1,16 +1,19 @@
 import { prisma } from '../db'
-import { chat, chatJSON } from '../minimax'
+import { chatJSON } from '../minimax'
 import type { MiniMaxMessage } from '../minimax'
 import type { ResearchResult } from './types'
 
+const LOCK_TTL_MS = 3 * 60 * 1000 // 3 min heartbeat TTL
+const CHUNK_SIZE = 10
+
 // ──────────────────────────────────────────────
-// RESEARCH PROMPTS
+// PROMPTS
 // ──────────────────────────────────────────────
 
 const TIER1_PROMPT = (name: string, url: string | null): MiniMaxMessage[] => [
   {
     role: 'system',
-    content: `You are a GTM researcher. Given a startup name and optional URL, your job is to produce a quick intelligence brief in JSON. If you can't fetch the URL, use your knowledge — do not say "I don't know".`,
+    content: 'You are a GTM researcher. Given a startup name and optional URL, produce a quick intelligence brief in JSON. Use your knowledge if you cannot fetch the URL — do not say "I don\'t know".',
   },
   {
     role: 'user',
@@ -31,14 +34,14 @@ Return a JSON object ONLY (no markdown, no explanation) with these exact fields:
   "confidence": "high if you found their site, medium if you inferred, low if very uncertain"
 }
 
-Use null for red_flags if no issues found. Keep it real.`,
+Use null for red_flags if no issues found.`,
   },
 ]
 
 const TIER2_PROMPT = (name: string, url: string | null): MiniMaxMessage[] => [
   {
     role: 'system',
-    content: `You are a senior GTM researcher. You do deep research on startups. You provide thorough, nuanced intelligence reports. You always try to fetch real information before inferring.`,
+    content: 'You are a senior GTM researcher. Do deep research on startups. Be thorough and specific.',
   },
   {
     role: 'user',
@@ -46,14 +49,6 @@ const TIER2_PROMPT = (name: string, url: string | null): MiniMaxMessage[] => [
 
 Name: ${name}
 URL: ${url ?? 'unknown'}
-
-For this research, fetch the homepage and look for:
-1. What they actually build (product summary)
-2. Who their customer is
-3. How they're positioning themselves
-4. What their current GTM motion looks like (pricing page, blog, job posts)
-5. Team size signals
-6. Any recent funding announcements
 
 Return a JSON object ONLY with:
 {
@@ -77,50 +72,128 @@ This is Tier 2 deep research — be thorough and specific.`,
 
 function scoreLead(data: ResearchResult): number {
   let score = 0
-
-  // Raised recently
-  if (data.gtm_signal.match(/recently raised|series [a-b]|seed round/i)) score += 3
-  // Hiring GTM
-  if (data.gtm_signal.match(/hiring.*(marketing|gtm|sales|growth)|(marketing|gtm|sales).*hiring/i)) score += 2
-  // Small team signal
-  if (data.gtm_signal.match(/team (5|10|15|20|25)-/i)) score += 1
-  // Has GTM motion to critique
+  if (data.gtm_signal?.match(/recently raised|series [a-b]|seed round/i)) score += 3
+  if (data.gtm_signal?.match(/hiring.*(marketing|gtm|sales|growth)|(marketing|gtm|sales).*hiring/i)) score += 2
+  if (data.gtm_signal?.match(/team (5|10|15|20|25)-/i)) score += 1
   if (data.gtm_motion && data.gtm_motion !== 'unknown') score += 1
-  // Fits a vertical we know
-  if (data.target_customer.match(/startup|saas|developer|app/i)) score += 1
-  // Confidence bonus
+  if (data.target_customer?.match(/startup|saas|developer|app/i)) score += 1
   if (data.confidence === 'high') score += 1
-
-  // Red flags
   if (data.red_flags?.match(/has (vp|agency)|big team|too busy/i)) score -= 4
-
   return Math.max(0, Math.min(10, score))
 }
 
 // ──────────────────────────────────────────────
-// TIER 1 RESEARCH (lightweight)
+// QUEUE HELPERS
 // ──────────────────────────────────────────────
 
-async function researchTier1(leadId: string, name: string, url: string | null): Promise<void> {
-  console.log(`[Research T1] ${name}`)
+/** Enqueue leads for T1 research */
+export async function enqueueResearchT1(leadIds: string[]): Promise<void> {
+  await prisma.processQueue.createMany({
+    data: leadIds.map(id => ({ lead_id: id, stage: 'research_t1' })),
+    skipDuplicates: true,
+  })
+}
+
+/** Enqueue leads for T2 research (only score >= 7) */
+export async function enqueueResearchT2(leadIds: string[]): Promise<void> {
+  await prisma.processQueue.createMany({
+    data: leadIds.map(id => ({ lead_id: id, stage: 'research_t2' })),
+    skipDuplicates: true,
+  })
+}
+
+// ──────────────────────────────────────────────
+// PROCESS ONE QUEUE ITEM
+// ──────────────────────────────────────────────
+
+async function processQueueItem(item: any): Promise<void> {
+  const lead = await prisma.lead.findUnique({ where: { id: item.lead_id } })
+  if (!lead) {
+    await prisma.processQueue.delete({ where: { id: item.id } }).catch(() => {})
+    return
+  }
+
   try {
-    const data = await chatJSON<ResearchResult>(TIER1_PROMPT(name, url))
-    const score = scoreLead(data)
+    if (item.stage === 'research_t1') {
+      const data = await chatJSON<ResearchResult>(TIER1_PROMPT(lead.name, lead.url))
+      const score = scoreLead(data)
 
-    await prisma.lead.update({
-      where: { id: leadId },
-      data: {
-        status: score >= 7 ? 'enriched' : score < 4 ? 'archived' : 'enriched',
-        score,
-        enriched_at: new Date(),
-      },
-    })
-
-    // Create research doc only for non-archived
-    if (score >= 4) {
-      await prisma.researchDoc.create({
+      await prisma.lead.update({
+        where: { id: lead.id },
         data: {
-          lead_id: leadId,
+          status: score >= 4 ? 'enriched' : 'archived',
+          score,
+          enriched_at: new Date(),
+        },
+      })
+
+      if (score >= 4) {
+        await prisma.researchDoc.upsert({
+          where: { lead_id: lead.id },
+          create: {
+            lead_id: lead.id,
+            product_summary: data.product_summary,
+            target_customer: data.target_customer,
+            gtm_motion: data.gtm_motion,
+            positioning: data.positioning,
+            gtm_signal: data.gtm_signal,
+            red_flags: data.red_flags,
+            email_angle: data.email_angle,
+            confidence: data.confidence,
+            raw_json: data as any,
+          },
+          update: {
+            product_summary: data.product_summary,
+            target_customer: data.target_customer,
+            gtm_motion: data.gtm_motion,
+            positioning: data.positioning,
+            gtm_signal: data.gtm_signal,
+            red_flags: data.red_flags,
+            email_angle: data.email_angle,
+            confidence: data.confidence,
+            raw_json: data as any,
+          },
+        })
+      }
+
+      await prisma.activityLog.create({
+        data: {
+          lead_id: lead.id,
+          action: 'enriched',
+          detail: `T1 research: score=${score} confidence=${data.confidence}`,
+        },
+      })
+
+      await prisma.processQueue.update({
+        where: { id: item.id },
+        data: { status: 'done' },
+      })
+
+      // Enqueue for T2 if score >= 7
+      if (score >= 7) {
+        await enqueueResearchT2([lead.id])
+      }
+    }
+
+    else if (item.stage === 'research_t2') {
+      const data = await chatJSON<ResearchResult>(TIER2_PROMPT(lead.name, lead.url))
+      const score = scoreLead(data)
+
+      await prisma.researchDoc.upsert({
+        where: { lead_id: lead.id },
+        create: {
+          lead_id: lead.id,
+          product_summary: data.product_summary,
+          target_customer: data.target_customer,
+          gtm_motion: data.gtm_motion,
+          positioning: data.positioning,
+          gtm_signal: data.gtm_signal,
+          red_flags: data.red_flags,
+          email_angle: data.email_angle,
+          confidence: data.confidence,
+          raw_json: data as any,
+        },
+        update: {
           product_summary: data.product_summary,
           target_customer: data.target_customer,
           gtm_motion: data.gtm_motion,
@@ -132,121 +205,112 @@ async function researchTier1(leadId: string, name: string, url: string | null): 
           raw_json: data as any,
         },
       })
-    }
 
-    await prisma.activityLog.create({
+      await prisma.lead.update({
+        where: { id: lead.id },
+        data: {
+          status: 'researched',
+          score,
+          researched_at: new Date(),
+        },
+      })
+
+      await prisma.activityLog.create({
+        data: {
+          lead_id: lead.id,
+          action: 'researched',
+          detail: `T2 research: score=${score} confidence=${data.confidence}`,
+        },
+      })
+
+      await prisma.processQueue.update({
+        where: { id: item.id },
+        data: { status: 'done' },
+      })
+    }
+  } catch (e: any) {
+    console.error(`[Queue] Error processing ${item.id}:`, e)
+    await prisma.processQueue.update({
+      where: { id: item.id },
       data: {
-        lead_id: leadId,
-        action: 'enriched',
-        detail: `T1 research: score=${score} confidence=${data.confidence}`,
+        status: 'failed',
+        attempts: { increment: 1 },
+        error: e.message,
       },
     })
-  } catch (e) {
-    console.error(`[Research T1] Error ${name}:`, e)
   }
 }
 
 // ──────────────────────────────────────────────
-// TIER 2 RESEARCH (deep)
+// CRON HANDLER — called every 5 minutes by Vercel Cron
 // ──────────────────────────────────────────────
 
-async function researchTier2(leadId: string, name: string, url: string | null): Promise<void> {
-  console.log(`[Research T2] ${name}`)
-  try {
-    const data = await chatJSON<ResearchResult>(TIER2_PROMPT(name, url))
-    const score = scoreLead(data)
-
-    // Update or create research doc
-    const existing = await prisma.researchDoc.findUnique({ where: { lead_id: leadId } })
-    if (existing) {
-      await prisma.researchDoc.update({
-        where: { lead_id: leadId },
-        data: {
-          product_summary: data.product_summary,
-          target_customer: data.target_customer,
-          gtm_motion: data.gtm_motion,
-          positioning: data.positioning,
-          gtm_signal: data.gtm_signal,
-          red_flags: data.red_flags,
-          email_angle: data.email_angle,
-          confidence: data.confidence,
-          raw_json: data as any,
-        },
-      })
-    } else {
-      await prisma.researchDoc.create({
-        data: {
-          lead_id: leadId,
-          product_summary: data.product_summary,
-          target_customer: data.target_customer,
-          gtm_motion: data.gtm_motion,
-          positioning: data.positioning,
-          gtm_signal: data.gtm_signal,
-          red_flags: data.red_flags,
-          email_angle: data.email_angle,
-          confidence: data.confidence,
-          raw_json: data as any,
-        },
-      })
-    }
-
-    await prisma.lead.update({
-      where: { id: leadId },
-      data: {
-        status: 'researched',
-        score,
-        researched_at: new Date(),
-      },
-    })
-
-    await prisma.activityLog.create({
-      data: {
-        lead_id: leadId,
-        action: 'researched',
-        detail: `T2 deep research: score=${score} confidence=${data.confidence}`,
-      },
-    })
-  } catch (e) {
-    console.error(`[Research T2] Error ${name}:`, e)
-  }
-}
-
-// ──────────────────────────────────────────────
-// RUN RESEARCH PIPELINE
-// ──────────────────────────────────────────────
-
-export async function runResearch(): Promise<{ tier1: number; tier2: number }> {
-  console.log('[Research] Starting pipeline...')
-
-  // Get all enriched leads for T1
-  const enriched = await prisma.lead.findMany({
+export async function processQueueChunk(): Promise<{ processed: number; skipped: number }> {
+  // 1. Claim stale locks (heartbeat timeout)
+  const staleThreshold = new Date(Date.now() - LOCK_TTL_MS)
+  const staleItems = await prisma.processQueue.findMany({
     where: {
-      status: 'enriched',
-      researched_at: null,
-      score: { gte: 7 },
+      status: 'processing',
+      locked_at: { lt: staleThreshold },
     },
-    take: 20,
   })
-
-  // T2: deep research on high-scored leads
-  let tier2Count = 0
-  for (const lead of enriched) {
-    await researchTier2(lead.id, lead.name, lead.url)
-    tier2Count++
+  for (const item of staleItems) {
+    await prisma.processQueue.update({
+      where: { id: item.id },
+      data: { status: 'pending', locked_at: null },
+    }).catch(() => {})
   }
 
-  // Also run T1 on any discovered leads that haven't been enriched
-  const discovered = await prisma.lead.findMany({
-    where: { status: 'discovered' },
-    take: 50,
+  // 2. Claim a fresh chunk of pending items
+  const items = await prisma.processQueue.findMany({
+    where: { status: 'pending' },
+    take: CHUNK_SIZE,
+    orderBy: { created_at: 'asc' },
   })
 
-  let tier1Count = 0
-  for (const lead of discovered) {
-    await researchTier1(lead.id, lead.name, lead.url)
-    tier1Count++
+  for (const item of items) {
+    // Idempotency: re-check status inside lock
+    const current = await prisma.processQueue.findUnique({ where: { id: item.id } })
+    if (!current || current.status !== 'pending') continue
+
+    await prisma.processQueue.update({
+      where: { id: item.id },
+      data: { status: 'processing', locked_at: new Date() },
+    })
+
+    await processQueueItem(item)
   }
 
-  console.log(`[Research] Done: ${tier1Count} T1, ${tier2Count} T2`)
-  return { tier1: tier1Count, tier2: tier2Count }
+  return { processed: items.length, skipped: 0 }
+}
+
+// ──────────────────────────────────────────────
+// BOOTSTRAP: enqueue T1 for all discovered leads not yet in queue
+// ──────────────────────────────────────────────
+
+export async function bootstrapResearch(): Promise<number> {
+  const inQueue = await prisma.processQueue.findMany({
+    where: { stage: { in: ['research_t1', 'research_t2'] } },
+    select: { lead_id: true },
+  })
+  const queuedIds = new Set(inQueue.map(q => q.lead_id))
+
+  const leads = await prisma.lead.findMany({
+    where: {
+      status: 'discovered',
+      NOT: { id: { in: [...queuedIds] } },
+    },
+    take: 100,
+  })
+
+  if (leads.length > 0) {
+    await enqueueResearchT1(leads.map(l => l.id))
+  }
+  return leads.length
+}
+
+// Legacy: runResearch enqueues all discovered leads into the queue
+export async function runResearch(): Promise<{ enqueued: number }> {
+  const count = await bootstrapResearch()
+  return { enqueued: count }
 }

@@ -36,6 +36,7 @@ model Lead {
   research      ResearchDoc?
   email_draft   EmailDraft?
   activities    ActivityLog[]
+  queue_items   ProcessQueue[]
 
   @@index([status])
   @@index([source])
@@ -99,4 +100,21 @@ model ActivityLog {
 
   @@index([lead_id])
   @@index([action])
+}
+
+// Queue for chunked background processing — prevents timeout
+model ProcessQueue {
+  id         String    @id @default(uuid())
+  lead_id    String    @unique
+  lead       Lead      @relation(fields: [lead_id], references: [id], onDelete: Cascade)
+  stage      String    // 'research_t1', 'research_t2', 'draft'
+  status     String    @default("pending") // pending, processing, done, failed
+  attempts   Int       @default(0)
+  error      String?   @db.Text
+  locked_at  DateTime? // heartbeat — if set, this item is being worked on
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+
+  @@index([stage, status])
+  @@index([locked_at])
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { runResearch } from '@/lib/research/pipeline'
 
+// Manual trigger — kicks off the queue bootstrap (actual processing happens via /api/cron/process)
 export async function POST() {
   try {
     const result = await runResearch()
