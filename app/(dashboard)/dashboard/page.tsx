@@ -59,12 +59,12 @@ export default async function DashboardPage() {
           )}
         </div>
 
-        <div className="card">
+        <div className="card" style={{ display: 'flex', flexDirection: 'column' }}>
           <h2 className="mb-16">Recent Leads</h2>
           {recent.length === 0 ? (
             <p className="empty-state" style={{padding:'24px'}}>No leads yet — run discovery first</p>
           ) : (
-            <div>
+            <div style={{ overflowY: 'auto', flex: 1, maxHeight: '340px' }}>
               {recent.map(lead => (
                 <Link key={lead.id} href={`/leads/${lead.id}`} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 0',borderBottom:'1px solid var(--border)',textDecoration:'none',color:'inherit'}}>
                   <div>
