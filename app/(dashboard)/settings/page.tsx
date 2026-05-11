@@ -1,30 +1,50 @@
 export default function SettingsPage() {
   return (
-    <div>
-      <h1 style={{ fontSize: '24px', fontWeight: '600', marginBottom: '24px' }}>Settings</h1>
+    <>
+      <div className="page-header">
+        <h1>Settings</h1>
+      </div>
 
-      <div style={{ background: '#111', padding: '20px', borderRadius: '8px', border: '1px solid #1a1a1a', marginBottom: '24px' }}>
-        <h2 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '16px' }}>API Keys</h2>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      <div className="card settings-section">
+        <h2>Environment Variables</h2>
+        <div className="settings-row">
           <div>
-            <label style={{ fontSize: '13px', color: '#666', display: 'block', marginBottom: '4px' }}>MINIMAX_API_KEY</label>
-            <input type="password" value="sk-cp-..." readOnly style={{ width: '100%', padding: '8px 12px', background: '#0a0a0a', border: '1px solid #333', borderRadius: '6px', color: '#888', fontSize: '14px' }} />
+            <label className="label mb-8" style={{display:'block'}}>MINIMAX_API_KEY</label>
+            <input type="password" defaultValue="••••••••••••••••" readOnly />
           </div>
           <div>
-            <label style={{ fontSize: '13px', color: '#666', display: 'block', marginBottom: '4px' }}>DATABASE_URL</label>
-            <input type="text" value="postgresql://neondb..." readOnly style={{ width: '100%', padding: '8px 12px', background: '#0a0a0a', border: '1px solid #333', borderRadius: '6px', color: '#888', fontSize: '14px' }} />
+            <label className="label mb-8" style={{display:'block'}}>DATABASE_URL</label>
+            <input type="text" defaultValue="postgresql://neondb..." readOnly />
+          </div>
+        </div>
+        <div className="settings-row">
+          <div>
+            <label className="label mb-8" style={{display:'block'}}>APP_PASSWORD</label>
+            <input type="text" defaultValue="devesh" readOnly />
+          </div>
+          <div>
+            <label className="label mb-8" style={{display:'block'}}>RESEND_API_KEY</label>
+            <input type="password" defaultValue="" placeholder="Not set — add to send emails" />
           </div>
         </div>
       </div>
 
-      <div style={{ background: '#111', padding: '20px', borderRadius: '8px', border: '1px solid #1a1a1a' }}>
-        <h2 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '16px' }}>Cron Endpoints</h2>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px', fontFamily: 'monospace' }}>
-          <div><span style={{ color: '#666' }}>POST</span> <span style={{ color: '#0af' }}>/api/cron/discover</span> — Run all discovery sources</div>
-          <div><span style={{ color: '#666' }}>POST</span> <span style={{ color: '#0af' }}>/api/cron/research</span> — Run research pipeline</div>
-          <div><span style={{ color: '#666' }}>POST</span> <span style={{ color: '#0af' }}>/api/cron/draft</span> — Generate email drafts</div>
+      <div className="card">
+        <h2>Cron Endpoints</h2>
+        <div style={{display:'flex',flexDirection:'column',gap:'8px',fontSize:'0.875rem',fontFamily:'monospace',marginTop:'12px'}}>
+          {[
+            ['POST','/api/cron/discover','Run all discovery sources'],
+            ['POST','/api/cron/research','Run T1 + T2 research pipeline'],
+            ['POST','/api/cron/draft','Generate email drafts'],
+          ].map(([method, path, desc]) => (
+            <div key={path} className="flex gap-12" style={{padding:'10px 12px',background:'var(--surface-2)',borderRadius:'var(--radius-sm)'}}>
+              <span style={{color:'var(--accent)',fontWeight:'600',minWidth:'40px'}}>{method}</span>
+              <span style={{color:'var(--text)'}}>{path}</span>
+              <span style={{color:'var(--text-3)'}}>— {desc}</span>
+            </div>
+          ))}
         </div>
       </div>
-    </div>
+    </>
   )
 }
