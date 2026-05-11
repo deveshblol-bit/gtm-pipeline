@@ -19,20 +19,48 @@ export default function PipelineControls() {
   }
 
   return (
-    <div style={{ marginTop: '24px', padding: '20px', background: '#111', borderRadius: '8px', border: '1px solid #1a1a1a' }}>
-      <h2 style={{ fontSize: '16px', marginBottom: '16px' }}>Run Pipelines</h2>
-      <div style={{ display: 'flex', gap: '12px', marginBottom: '12px' }}>
-        <button onClick={() => run('discover')} disabled={running !== null} style={{ padding: '10px 20px', background: '#fff', color: '#000', border: 'none', borderRadius: '6px', fontWeight: '600', cursor: 'pointer', opacity: running ? 0.5 : 1 }}>
-          {running === 'discover' ? 'Running...' : 'Discover'}
+    <div style={{ marginTop: '24px' }}>
+      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+        <button
+          onClick={() => run('discover')}
+          disabled={running !== null}
+          className="btn btn-primary"
+          style={{ opacity: running ? 0.5 : 1 }}
+        >
+          {running === 'discover' ? 'Running...' : '▶ Discover'}
         </button>
-        <button onClick={() => run('research')} disabled={running !== null} style={{ padding: '10px 20px', background: '#222', color: '#fff', border: '1px solid #333', borderRadius: '6px', cursor: 'pointer', opacity: running ? 0.5 : 1 }}>
-          {running === 'research' ? 'Running...' : 'Research'}
+        <button
+          onClick={() => run('research')}
+          disabled={running !== null}
+          className="btn btn-secondary"
+          style={{ opacity: running ? 0.5 : 1 }}
+        >
+          {running === 'research' ? 'Running...' : '🔬 Research'}
         </button>
-        <button onClick={() => run('draft')} disabled={running !== null} style={{ padding: '10px 20px', background: '#222', color: '#fff', border: '1px solid #333', borderRadius: '6px', cursor: 'pointer', opacity: running ? 0.5 : 1 }}>
-          {running === 'draft' ? 'Running...' : 'Draft Emails'}
+        <button
+          onClick={() => run('draft')}
+          disabled={running !== null}
+          className="btn btn-secondary"
+          style={{ opacity: running ? 0.5 : 1 }}
+        >
+          {running === 'draft' ? 'Running...' : '✏️ Draft Emails'}
         </button>
       </div>
-      {result && <pre style={{ fontSize: '12px', color: '#0af', background: '#0a0a0a', padding: '12px', borderRadius: '6px', overflow: 'auto' }}>{result}</pre>}
+      {result && (
+        <pre style={{
+          marginTop: '16px',
+          padding: '14px 16px',
+          background: 'var(--surface-2)',
+          borderRadius: 'var(--radius-sm)',
+          fontSize: '0.8125rem',
+          color: 'var(--accent)',
+          fontFamily: '"SF Mono", "Fira Code", monospace',
+          overflow: 'auto',
+          border: '1px solid var(--border)',
+        }}>
+          {result}
+        </pre>
+      )}
     </div>
   )
 }
