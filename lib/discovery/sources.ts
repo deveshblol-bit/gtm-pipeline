@@ -269,14 +269,5 @@ export async function runDiscovery(): Promise<{ total: number; saved: number }> 
   console.log(`[Discovery] Found ${all.length} leads, saving...`)
   const saved = await saveLeads(all)
 
-  // Log activity
-  await prisma.activityLog.create({
-    data: {
-      lead_id: 'system',
-      action: 'discovered',
-      detail: `Discovery run: ${all.length} found, ${saved} new saved from all sources`,
-    },
-  })
-
   return { total: all.length, saved }
 }
