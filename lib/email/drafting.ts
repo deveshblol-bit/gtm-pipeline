@@ -1,13 +1,13 @@
 import { prisma } from '../db'
 import { chat } from '../minimax'
-import type { MiniMaxMessage } from '../minimax'
+import type { Message } from '../minimax'
 
 const DRAFT_PROMPT = (name: string, research: {
   product_summary: string
   target_customer: string
   gtm_motion: string
   email_angle: string
-}): MiniMaxMessage[] => [
+}): Message[] => [
   {
     role: 'system',
     content: `You are a CMO writing a casual peer-to-peer cold email. No agency speak. No buzzwords. Short, direct, like you're texting a founder you met at a conference.`,

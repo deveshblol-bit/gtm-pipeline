@@ -1,6 +1,6 @@
 import { prisma } from '../db'
 import { chatJSON } from '../minimax'
-import type { MiniMaxMessage } from '../minimax'
+import type { Message } from '../minimax'
 import type { ResearchResult } from './types'
 
 const LOCK_TTL_MS = 3 * 60 * 1000 // 3 min heartbeat TTL
@@ -10,7 +10,7 @@ const CHUNK_SIZE = 10
 // PROMPTS
 // ──────────────────────────────────────────────
 
-const TIER1_PROMPT = (name: string, url: string | null): MiniMaxMessage[] => [
+const TIER1_PROMPT = (name: string, url: string | null): Message[] => [
   {
     role: 'system',
     content: 'You are a GTM researcher. Given a startup name and optional URL, produce a quick intelligence brief in JSON. Use your knowledge if you cannot fetch the URL — do not say "I don\'t know".',
@@ -38,7 +38,7 @@ Use null for red_flags if no issues found.`,
   },
 ]
 
-const TIER2_PROMPT = (name: string, url: string | null): MiniMaxMessage[] => [
+const TIER2_PROMPT = (name: string, url: string | null): Message[] => [
   {
     role: 'system',
     content: 'You are a senior GTM researcher. Do deep research on startups. Be thorough and specific.',

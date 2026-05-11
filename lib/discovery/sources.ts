@@ -1,6 +1,6 @@
 import { prisma } from '../db'
 import { chat } from '../minimax'
-import type { MiniMaxMessage } from '../minimax'
+import type { Message } from '../minimax'
 
 interface DiscoveredLead {
   name: string
