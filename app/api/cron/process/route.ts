@@ -1,17 +1,17 @@
 import { NextResponse } from 'next/server'
-import { processQueueChunk, bootstrapResearch } from '@/lib/research/pipeline'
+import { bootstrapResearch, processQueueChunk } from '@/lib/research/pipeline'
 
+// Runs once/day via Vercel Cron (safety net)
+// Also callable manually — processes 10 leads per call
 export async function POST() {
   try {
-    // Bootstrap: enqueue any discovered leads not yet in queue
     const bootstrapped = await bootstrapResearch()
-    // Process a chunk of queue items (up to 10)
     const { processed } = await processQueueChunk()
     return NextResponse.json({
       ok: true,
       bootstrapped,
       processed,
-      next_check: '5 minutes',
+      note: 'Hobby plan: once/day cron. Click "Process Queue" in dashboard to run manually.',
     })
   } catch (e: any) {
     console.error('[Cron/Process]', e)
@@ -19,7 +19,6 @@ export async function POST() {
   }
 }
 
-// Vercel Cron: GET is also called by the cron scheduler
 export async function GET() {
   return POST()
 }

@@ -18,6 +18,20 @@ export default function PipelineControls() {
     setRunning(null)
   }
 
+  // Process queue on demand — processes up to 10 leads immediately
+  async function processQueue() {
+    setRunning('process')
+    setResult(null)
+    try {
+      const r = await fetch(`/api/cron/process`, { method: 'POST' })
+      const d = await r.json()
+      setResult(`queue: ${JSON.stringify(d)}`)
+    } catch(e: any) {
+      setResult(`process error: ${e.message}`)
+    }
+    setRunning(null)
+  }
+
   return (
     <div style={{ marginTop: '24px' }}>
       <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
@@ -35,7 +49,15 @@ export default function PipelineControls() {
           className="btn btn-secondary"
           style={{ opacity: running ? 0.5 : 1 }}
         >
-          {running === 'research' ? 'Running...' : '🔬 Research'}
+          {running === 'research' ? 'Running...' : '🔬 Enqueue Research'}
+        </button>
+        <button
+          onClick={processQueue}
+          disabled={running !== null}
+          className="btn btn-secondary"
+          style={{ opacity: running ? 0.5 : 1 }}
+        >
+          {running === 'process' ? 'Running...' : '⚡ Process Queue (10)'}
         </button>
         <button
           onClick={() => run('draft')}
