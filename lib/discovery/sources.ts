@@ -209,6 +209,268 @@ export async function discoverAngelList(): Promise<DiscoveredLead[]> {
 }
 
 // ──────────────────────────────────────────────
+// YC LAUNCH — new YC companies coming out of batch
+// https://www.ycombinator.com/launches/
+// ──────────────────────────────────────────────
+
+export async function discoverYCLaunch(): Promise<DiscoveredLead[]> {
+  try {
+    const res = await fetch('https://www.ycombinator.com/launches/', {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36' },
+    })
+    const html = await res.text()
+    // Each launch card has a company name + link pattern
+    const matches = [...html.matchAll(/href="(\/launches\/[^"]+)">\s*([^<]+)\s*<\/a>\s*<\/h3>/g)]
+    const seen = new Set<string>()
+    const leads: DiscoveredLead[] = []
+    for (const m of matches.slice(0, 50)) {
+      const name = m[2].trim()
+      if (!name || seen.has(name)) continue
+      seen.add(name)
+      leads.push({
+        name,
+        url: `https://www.ycombinator.com${m[1]}`,
+        description: null,
+        source: 'yc_launch',
+      })
+    }
+    // Fallback: look for any company name in launch links
+    if (leads.length === 0) {
+      const fallback = [...html.matchAll(/href="(\/launches\/[a-z0-9-]+)">([^<]+)<\/a>/gi)]
+      for (const m of fallback.slice(0, 30)) {
+        const name = m[2].trim()
+        if (!name || seen.has(name)) continue
+        seen.add(name)
+        leads.push({
+          name,
+          url: `https://www.ycombinator.com${m[1]}`,
+          description: null,
+          source: 'yc_launch',
+        })
+      }
+    }
+    return leads
+  } catch (e) {
+    console.error('YC Launch error:', e)
+    return []
+  }
+}
+
+// ──────────────────────────────────────────────
+// YC DEMO DAY — companies from recent batches
+// Uses HN Algolia to find YC demo day announcements
+// ──────────────────────────────────────────────
+
+export async function discoverYCDemoDay(): Promise<DiscoveredLead[]> {
+  try {
+    // Search HN for recent YC demo day posts
+    const res = await fetch(
+      `https://hn.algolia.com/api/v1/search?query=ycombinator%20demo%20day&tags=story&hitsPerPage=30`
+    )
+    const data = await res.json()
+    const seen = new Set<string>()
+    const leads: DiscoveredLead[] = []
+    for (const hit of data.hits ?? []) {
+      const title = hit.title ?? ''
+      // Extract company name — often "Company Name (YC W24 Demo Day)" or similar
+      const match = title.match(/^([^(]+?)\s*(?:\(|YC)/)
+      if (match) {
+        const name = match[1].trim().replace(/^YC\s+/i, '')
+        if (name && name.length > 2 && name.length < 60 && !seen.has(name)) {
+          seen.add(name)
+          leads.push({
+            name,
+            url: hit.url ?? `https://news.ycombinator.com/item?id=${hit.objectID}`,
+            description: title,
+            source: 'yc_demoday',
+          })
+        }
+      }
+    }
+    return leads
+  } catch (e) {
+    console.error('YC Demo Day error:', e)
+    return []
+  }
+}
+
+// ──────────────────────────────────────────────
+// YC HIRING — YC founder job postings
+// ──────────────────────────────────────────────
+
+export async function discoverYCHiring(): Promise<DiscoveredLead[]> {
+  try {
+    // YC founder jobs board
+    const res = await fetch('https://www.ycombinator.com/jobs/board/', {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36' },
+    })
+    const html = await res.text()
+    const matches = [...html.matchAll(/href="(\/companies\/[^"]+)">([^<]+)<\/a>/g)]
+    const seen = new Set<string>()
+    const leads: DiscoveredLead[] = []
+    for (const m of matches.slice(0, 50)) {
+      const name = m[2].trim()
+      if (!name || seen.has(name)) continue
+      seen.add(name)
+      leads.push({
+        name,
+        url: `https://www.ycombinator.com${m[1]}`,
+        description: null,
+        source: 'yc_hiring',
+      })
+    }
+    return leads
+  } catch (e) {
+    console.error('YC Hiring error:', e)
+    return []
+  }
+}
+
+// ──────────────────────────────────────────────
+// CRUNCHBASE — public startup/discovery pages
+// ──────────────────────────────────────────────
+
+export async function discoverCrunchbase(): Promise<DiscoveredLead[]> {
+  try {
+    // Crunchbase Discover page — new startups
+    const res = await fetch('https://www.crunchbase.com/discover/home', {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml',
+      },
+    })
+    const html = await res.text()
+    // Crunchbase company cards have data-id or slug patterns
+    const matches = [...html.matchAll(/href="\/organization\/([^"]+)"/g)]
+    const seen = new Set<string>()
+    const leads: DiscoveredLead[] = []
+    for (const m of [...new Set(matches.map((m) => m[1]))].slice(0, 40)) {
+      const slug = m.trim()
+      if (!slug || seen.has(slug)) continue
+      seen.add(slug)
+      const name = slug.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+      leads.push({
+        name,
+        url: `https://www.crunchbase.com/organization/${slug}`,
+        description: null,
+        source: 'crunchbase',
+      })
+    }
+    return leads
+  } catch (e) {
+    console.error('Crunchbase error:', e)
+    return []
+  }
+}
+
+// ──────────────────────────────────────────────
+// REMOTIVE — startup jobs board (remote-friendly)
+// ──────────────────────────────────────────────
+
+export async function discoverRemotive(): Promise<DiscoveredLead[]> {
+  try {
+    const res = await fetch('https://remotive.com/api/remote-jobs?category=software-dev&limit=50', {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+    })
+    const data = await res.json()
+    const seen = new Set<string>()
+    const leads: DiscoveredLead[] = []
+    for (const job of data.jobs ?? []) {
+      const company = job.company_name?.trim()
+      const url = job.url ?? null
+      if (!company || seen.has(company)) continue
+      seen.add(company)
+      leads.push({
+        name: company,
+        url,
+        description: job.title ? `${job.title} — ${job.description?.slice(0, 120) ?? ''}` : null,
+        source: 'remotive',
+      })
+    }
+    return leads
+  } catch (e) {
+    console.error('Remotive error:', e)
+    return []
+  }
+}
+
+// ──────────────────────────────────────────────
+// /R STARTUP JOBS — Reddit community job board
+// ──────────────────────────────────────────────
+
+export async function discoverRedditStartups(): Promise<DiscoveredLead[]> {
+  try {
+    // Fetch hot posts from r/startups
+    const res = await fetch('https://www.reddit.com/r/startups/hot.json?limit=30', {
+      headers: { 'User-Agent': 'GTM-Pipeline/1.0' },
+    })
+    const data = await res.json()
+    const seen = new Set<string>()
+    const leads: DiscoveredLead[] = []
+    for (const child of data.data?.children ?? []) {
+      const post = child.data
+      const title = post.title ?? ''
+      const url = post.url ?? null
+      // Extract company name from post title (usually "Hiring [Company]: ... " or "[Company] is hiring...")
+      const match = title.match(/(?:hiring\s+)?([A-Z][A-Za-z0-9 &]+)(?:\s+[-:|]|\s+is\s+hiring|\s+\()/i)
+      if (match) {
+        const name = match[1].trim().slice(0, 50)
+        if (name && name.length > 2 && !seen.has(name)) {
+          seen.add(name)
+          leads.push({
+            name,
+            url,
+            description: title,
+            source: 'reddit_startups',
+          })
+        }
+      }
+    }
+    return leads
+  } catch (e) {
+    console.error('Reddit Startups error:', e)
+    return []
+  }
+}
+
+// ──────────────────────────────────────────────
+// VC PORTFOLIO NEWSPIPES — recent portfolio updates
+// ──────────────────────────────────────────────
+
+export async function discoverVCPortfolios(): Promise<DiscoveredLead[]> {
+  try {
+    // Product Hunt collections for "VC backed" or recent launches
+    const res = await fetch(
+      'https://news.ycombinator.com/newest?points=100&front_page_hot_date_range=p7d'
+    )
+    const html = await res.text()
+    const matches = [...html.matchAll(/href="(https?:\/\/(?!news\.ycombinator|google|github)[^"]+)"/g)]
+    const seen = new Set<string>()
+    const leads: DiscoveredLead[] = []
+    for (const m of matches.slice(0, 30)) {
+      const url = m[1]
+      try {
+        const u = new URL(url)
+        const name = u.hostname.replace(/^www\./, '').split('.')[0]
+        if (name && !seen.has(name) && name.length > 2) {
+          seen.add(name)
+          leads.push({
+            name: name.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+            url,
+            description: null,
+            source: 'vc_portfolio',
+          })
+        }
+      } catch {}
+    }
+    return leads
+  } catch (e) {
+    console.error('VC Portfolio error:', e)
+    return []
+  }
+}
+
+// ──────────────────────────────────────────────
 // SAVE LEADS TO DB (dedup by source+name)
 // ──────────────────────────────────────────────
 
@@ -244,22 +506,37 @@ export async function saveLeads(leads: DiscoveredLead[]): Promise<number> {
 export async function runDiscovery(): Promise<{ total: number; saved: number }> {
   console.log('[Discovery] Starting all sources...')
 
-  const [ph, yc, tc, ih, hn, al] = await Promise.allSettled([
-    discoverProductHunt(),
-    discoverYCCompanies(),
-    discoverTechCrunch(),
-    discoverIndieHackers(),
-    discoverHackerNews(),
-    discoverAngelList(),
-  ])
+  const [ph, yc, yc_launch, yc_demoday, yc_hire, tc, ih, hn, al, cb, remote, reddit, vc] =
+    await Promise.allSettled([
+      discoverProductHunt(),
+      discoverYCCompanies(),
+      discoverYCLaunch(),
+      discoverYCDemoDay(),
+      discoverYCHiring(),
+      discoverTechCrunch(),
+      discoverIndieHackers(),
+      discoverHackerNews(),
+      discoverAngelList(),
+      discoverCrunchbase(),
+      discoverRemotive(),
+      discoverRedditStartups(),
+      discoverVCPortfolios(),
+    ])
 
   const all: DiscoveredLead[] = [
     ...(ph.status === 'fulfilled' ? ph.value : []),
     ...(yc.status === 'fulfilled' ? yc.value : []),
+    ...(yc_launch.status === 'fulfilled' ? yc_launch.value : []),
+    ...(yc_demoday.status === 'fulfilled' ? yc_demoday.value : []),
+    ...(yc_hire.status === 'fulfilled' ? yc_hire.value : []),
     ...(tc.status === 'fulfilled' ? tc.value : []),
     ...(ih.status === 'fulfilled' ? ih.value : []),
     ...(hn.status === 'fulfilled' ? hn.value : []),
     ...(al.status === 'fulfilled' ? al.value : []),
+    ...(cb.status === 'fulfilled' ? cb.value : []),
+    ...(remote.status === 'fulfilled' ? remote.value : []),
+    ...(reddit.status === 'fulfilled' ? reddit.value : []),
+    ...(vc.status === 'fulfilled' ? vc.value : []),
   ]
 
   // BetaList separate to avoid blocking
