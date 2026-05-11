@@ -84,7 +84,7 @@ export default async function DashboardPage() {
 
       <div className="run-panel">
         <h2>Run Pipelines</h2>
-        <PipelineControls client />
+        <PipelineControls />
       </div>
     </>
   )
