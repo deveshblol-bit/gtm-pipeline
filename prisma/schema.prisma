@@ -1,0 +1,102 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL")
+}
+
+model Lead {
+  id            String      @id @default(uuid())
+  name          String
+  url           String?     @db.Text
+  source        String      // producthunt, betalist, yc, tc, ih, angellist, hn, manual
+  status        String      @default("discovered") // discovered, enriched, researched, drafted, sent, archived
+  score         Int         @default(0)
+  raised_amount String?     @db.Text
+  raised_date   DateTime?
+  team_size     String?     @db.Text
+  hiring_gtm    Boolean     @default(false)
+  description   String?     @db.Text
+  logo_url      String?     @db.Text
+
+  // Timestamps
+  discovered_at DateTime    @default(now())
+  enriched_at   DateTime?
+  researched_at DateTime?
+  created_at    DateTime    @default(now())
+  updated_at    DateTime    @updatedAt
+
+  // Relations
+  research      ResearchDoc?
+  email_draft   EmailDraft?
+  activities    ActivityLog[]
+
+  @@index([status])
+  @@index([source])
+  @@index([score])
+}
+
+model ResearchDoc {
+  id                String   @id @default(uuid())
+  lead_id          String   @unique
+  lead             Lead     @relation(fields: [lead_id], references: [id], onDelete: Cascade)
+
+  product_summary  String   @db.Text
+  target_customer String   @db.Text
+  gtm_motion       String   @db.Text
+  positioning      String   @db.Text
+  gtm_signal       String   @db.Text
+  red_flags        String?  @db.Text
+  email_angle      String   @db.Text
+  confidence       String   // high, medium, low
+
+  raw_json         Json?
+  created_at       DateTime @default(now())
+
+  @@index([lead_id])
+}
+
+model EmailDraft {
+  id        String    @id @default(uuid())
+  lead_id   String    @unique
+  lead      Lead      @relation(fields: [lead_id], references: [id], onDelete: Cascade)
+
+  subject   String    @db.Text
+  body      String    @db.Text
+  status    String    @default("draft") // draft, approved, sent
+
+  sent_at   DateTime?
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@index([lead_id])
+}
+
+model Campaign {
+  id        String   @id @default(uuid())
+  name      String
+  status    String   @default("active") // active, completed
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+}
+
+model ActivityLog {
+  id        String   @id @default(uuid())
+  lead_id   String
+  lead      Lead     @relation(fields: [lead_id], references: [id], onDelete: Cascade)
+
+  action    String   // discovered, enriched, researched, drafted, sent, archived
+  detail    String?  @db.Text
+
+  created_at DateTime @default(now())
+
+  @@index([lead_id])
+  @@index([action])
+}

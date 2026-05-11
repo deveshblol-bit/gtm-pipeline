@@ -1,0 +1,32 @@
+{
+  "name": "gtm-pipeline",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "db:push": "prisma db push",
+    "db:studio": "prisma studio",
+    "db:generate": "prisma generate"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0",
+    "next": "14.2.18",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "node-fetch": "^3.3.2",
+    "rss-parser": "^3.13.0",
+    "puppeteer": "^23.5.0",
+    "cheerio": "^1.0.0",
+    "uuid": "^10.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@types/uuid": "^10.0.0",
+    "prisma": "^5.22.0",
+    "typescript": "^5.6.3"
+  }
+}
