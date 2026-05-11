@@ -1,6 +1,6 @@
 import { prisma } from '../db'
-import { chat } from '../minimax'
-import type { Message } from '../minimax'
+import { chat } from '../openai'
+import type { Message } from '../openai'
 
 const DRAFT_PROMPT = (name: string, research: {
   product_summary: string

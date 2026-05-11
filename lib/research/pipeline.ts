@@ -1,6 +1,6 @@
 import { prisma } from '../db'
-import { chatJSON } from '../minimax'
-import type { Message } from '../minimax'
+import { chatJSON } from '../openai'
+import type { Message } from '../openai'
 import type { ResearchResult } from './types'
 
 const LOCK_TTL_MS = 3 * 60 * 1000 // 3 min heartbeat TTL
@@ -31,6 +31,7 @@ Return a JSON object ONLY (no markdown, no explanation) with these exact fields:
   "gtm_signal": "signs they feel GTM pain (hiring GTM, recent raise, no VP marketing)",
   "red_flags": "reasons to skip (too big, has agency, mass hiring = too busy) or null",
   "email_angle": "one specific observation about them that would make a good email opening",
+  "gtm_motion": "alias for current_gtm_motion — include the same value here",
   "confidence": "high if you found their site, medium if you inferred, low if very uncertain"
 }
 
@@ -59,6 +60,7 @@ Return a JSON object ONLY with:
   "gtm_signal": "strong signal analysis: do they feel GTM pain? are they hiring? recently raised?",
   "red_flags": "deal-breakers or null",
   "email_angle": "the single strongest observation that would make a founder actually read an email",
+  "gtm_motion": "alias for current_gtm_motion — include the same value here",
   "confidence": "high/medium/low"
 }
 

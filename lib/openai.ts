@@ -1,4 +1,4 @@
-const API_KEY = process.env.OPENAI_API_KEY ?? process.env.MINIMAX_API_KEY
+const API_KEY = process.env.OPENAI_API_KEY ?? ''
 const BASE_URL = 'https://api.openai.com/v1'
 
 export interface Message {
@@ -7,6 +7,8 @@ export interface Message {
 }
 
 export async function chat(messages: Message[], temperature = 0.7): Promise<string> {
+  if (!API_KEY) throw new Error('OPENAI_API_KEY is not set')
+
   const res = await fetch(`${BASE_URL}/chat/completions`, {
     method: 'POST',
     headers: {
