@@ -8,7 +8,6 @@ generator client {
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
-  directUrl = env("DATABASE_URL")
 }
 
 model Lead {
@@ -16,6 +15,10 @@ model Lead {
   name          String
   url           String?     @db.Text
   source        String      // producthunt, betalist, yc, tc, ih, angellist, hn, manual
+
+  @@unique([name, source])
+  @@index([source])
+  @@index([status])
   status        String      @default("discovered") // discovered, enriched, researched, drafted, sent, archived
   score         Int         @default(0)
   raised_amount String?     @db.Text
@@ -37,10 +40,6 @@ model Lead {
   email_draft   EmailDraft?
   activities    ActivityLog[]
   queue_items   ProcessQueue[]
-
-  @@index([status])
-  @@index([source])
-  @@index([score])
 }
 
 model ResearchDoc {

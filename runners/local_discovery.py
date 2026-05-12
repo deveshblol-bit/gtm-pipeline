@@ -2,7 +2,7 @@
 """
 Local discovery runner for GTM Pipeline.
 Runs on the server (Ubuntu) where Python + Playwright + Chromium are available.
-POSTs results to the deployed Vercel app.
+Uses cookie-based auth to talk to the Next.js app exposed via ngrok.
 
 Usage:
   python3 runners/local_discovery.py
@@ -15,18 +15,37 @@ import subprocess
 import sys
 import urllib.request
 import urllib.error
+import http.cookiejar
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).parent.resolve()
-BASE_URL = "https://gtm-pipeline.vercel.app"
+BASE_URL = "https://nonplausible-librada-manipulatively.ngrok-free.dev"
+APP_PASSWORD = "devesh"
 
 SOURCES = {
-    "yc":        "yc",
-    "betalist":  "betalist",
-    "remotive":  "remotive",
-    "techcrunch":"techcrunch",
-    "hackernews":"hackernews",
+    "yc":         "yc",
+    "betalist":   "betalist",
+    "remotive":   "remotive",
+    "techcrunch": "techcrunch",
+    "hackernews": "hackernews",
 }
+
+
+def get_opener():
+    """Returns an opener with auth cookie pre-loaded."""
+    cj = http.cookiejar.CookieJar()
+    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
+    data = json.dumps({"password": APP_PASSWORD}).encode()
+    req = urllib.request.Request(
+        f"{BASE_URL}/api/auth",
+        data=data,
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        opener.open(req, timeout=10)
+    except Exception as e:
+        print(f"  [auth] Warning: {e}", file=sys.stderr)
+    return opener
 
 
 def run_py_scraper(source: str) -> list[dict]:
@@ -47,15 +66,20 @@ def run_py_scraper(source: str) -> list[dict]:
         return []
 
 
-def post_json(endpoint: str, data: dict) -> bool:
-    """POST JSON to Vercel API endpoint."""
+def post_json(opener, endpoint: str, data: dict) -> bool:
+    """POST JSON to the app endpoint."""
     url = f"{BASE_URL}{endpoint}"
     body = json.dumps(data).encode()
     req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"})
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            print(f"  -> {resp.status} {resp.reason}")
-            return True
+        with opener.open(req, timeout=120) as resp:
+            body = resp.read().decode()
+            if resp.status >= 200 and resp.status < 300:
+                print(f"  -> {resp.status} saved={json.loads(body).get('saved','?')}")
+                return True
+            else:
+                print(f"  -> HTTP {resp.status}: {body[:200]}", file=sys.stderr)
+                return False
     except urllib.error.HTTPError as e:
         body = e.read().decode()[:200]
         print(f"  -> HTTP {e.code}: {body}", file=sys.stderr)
@@ -65,8 +89,8 @@ def post_json(endpoint: str, data: dict) -> bool:
         return False
 
 
-def discover_all(sources: list[str]) -> int:
-    """Run discovery for all sources, POST to Vercel, return total leads."""
+def discover_all(opener, sources: list[str]) -> int:
+    """Run discovery for all sources, POST to app, return total leads."""
     all_leads = []
     for src in sources:
         label = SOURCES.get(src, src)
@@ -81,8 +105,8 @@ def discover_all(sources: list[str]) -> int:
         print("\nNo leads found — skipping POST.")
         return 0
 
-    print(f"\n[Discovery] Posting {len(all_leads)} leads to Vercel...")
-    ok = post_json("/api/cron/discover", {"leads": all_leads})
+    print(f"\n[Discovery] Posting {len(all_leads)} leads to app...")
+    ok = post_json(opener, "/api/leads/ingest", {"leads": all_leads})
     return len(all_leads) if ok else 0
 
 
@@ -102,13 +126,15 @@ def main():
 
     sources = [s.strip() for s in args.source.split(",") if s.strip()]
     print(f"GTM Pipeline Local Runner — sources: {sources}")
+    print(f"Target: {BASE_URL}")
 
-    total = discover_all(sources)
+    opener = get_opener()
+    total = discover_all(opener, sources)
     print(f"\nDone. {total} leads discovered.")
 
     if not args.discover_only and total > 0:
         print("\n[Research] Triggering research pipeline on Vercel...")
-        post_json("/api/cron/research", {})
+        post_json(opener, "/api/cron/research", {})
 
 
 if __name__ == "__main__":
