@@ -1,6 +1,21 @@
 import { prisma } from '../db'
 import { chat } from '../openai'
 import type { Message } from '../openai'
+import { execSync } from 'child_process'
+import { resolve } from 'path'
+
+// Helper to run Python scraper and get JSON output
+async function runPyScraper(source: string): Promise<any[]> {
+  try {
+    const PYTHON = process.env.PYTHON_BIN ?? '/usr/local/lib/hermes-agent/venv/bin/python3'
+    const SCRAPER = resolve(__dirname, '../../scrapers/browser_scraper.py')
+    const out = execSync(`"${PYTHON}" "${SCRAPER}" --source ${source}`, { timeout: 60000 })
+    return JSON.parse(out.toString())
+  } catch (e: any) {
+    console.error(`[Scraper/${source}]`, e.message)
+    return []
+  }
+}
 
 interface DiscoveredLead {
   name: string
@@ -87,28 +102,7 @@ export async function discoverBetaList(): Promise<DiscoveredLead[]> {
 }
 
 export async function discoverYCCompanies(): Promise<DiscoveredLead[]> {
-  try {
-    const res = await fetch('https://www.ycombinator.com/companies/', {
-      headers: { 'User-Agent': 'Mozilla/5.0' },
-    })
-    const html = await res.text()
-    // Extract company names and URLs from the page
-    const matches = [...html.matchAll(/href="\/companies\/([^"]+)">([^<]+)<\/a>/g)]
-    const leads: DiscoveredLead[] = []
-    for (const m of matches.slice(0, 100)) {
-      const slug = m[1]
-      leads.push({
-        name: m[2].trim(),
-        url: `https://www.ycombinator.com/companies/${slug}/`,
-        description: null,
-        source: 'yc',
-      })
-    }
-    return leads
-  } catch (e) {
-    console.error('YC error:', e)
-    return []
-  }
+  return await runPyScraper('yc') as DiscoveredLead[]
 }
 
 export async function discoverTechCrunch(): Promise<DiscoveredLead[]> {
